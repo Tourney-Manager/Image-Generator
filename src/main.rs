@@ -1,4 +1,4 @@
-use image::{GenericImageView, Rgba, RgbaImage};
+use image::{Rgba, RgbaImage, imageops};
 use imageproc::drawing::draw_text_mut;
 use rusttype::{Font, Scale};
 use std::env;
@@ -25,23 +25,50 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create a new image for the result
     let mut result = RgbaImage::new(width, height);
 
-    // Function to map coordinates
-    let map_coordinates = |x: u32, y: u32, source_width: u32, source_height: u32| -> (u32, u32) {
-        let target_x = x * source_width / width;
-        let target_y = y * source_height / height;
-        (target_x, target_y)
-    };
-
-    // Merge images with proper scaling
-    for (x, y, pixel) in result.enumerate_pixels_mut() {
-        if y < height - x * height / width {
-            let (sx, sy) = map_coordinates(x, y, img1.width(), img1.height());
-            *pixel = img1.get_pixel(sx, sy);
+    // Function to fit image in triangle
+    fn fit_image_in_triangle(img: &RgbaImage, result: &mut RgbaImage, top_left: bool) {
+        let (width, height) = result.dimensions();
+        let diagonal_slope = height as f32 / width as f32;
+        
+        let triangle_height = if top_left { height as f32 } else { width as f32 * diagonal_slope } as u32;
+        let triangle_width = if top_left { height as f32 / diagonal_slope } else { width as f32 } as u32;
+        
+        let scale = f32::min(
+            triangle_width as f32 / img.width() as f32,
+            triangle_height as f32 / img.height() as f32
+        ) * 0.9; // 0.9 to leave a small margin
+        
+        let new_width = (img.width() as f32 * scale) as u32;
+        let new_height = (img.height() as f32 * scale) as u32;
+        
+        let resized = imageops::resize(img, new_width, new_height, imageops::FilterType::Lanczos3);
+        
+        let (offset_x, offset_y) = if top_left {
+            ((triangle_width - new_width) / 2, (triangle_height - new_height) / 2)
         } else {
-            let (sx, sy) = map_coordinates(x, y, img2.width(), img2.height());
-            *pixel = img2.get_pixel(sx, sy);
+            (width - triangle_width + (triangle_width - new_width) / 2, 
+             height - triangle_height + (triangle_height - new_height) / 2)
+        };
+        
+        for (x, y, &pixel) in resized.enumerate_pixels() {
+            let dest_x = x + offset_x;
+            let dest_y = y + offset_y;
+            if dest_x < width && dest_y < height {
+                let is_in_triangle = if top_left {
+                    dest_y < height - (dest_x as f32 * diagonal_slope) as u32
+                } else {
+                    dest_y > height - (dest_x as f32 * diagonal_slope) as u32
+                };
+                if is_in_triangle {
+                    result.put_pixel(dest_x, dest_y, pixel);
+                }
+            }
         }
     }
+
+    // Fit images in triangles
+    fit_image_in_triangle(&img1.to_rgba8(), &mut result, true);
+    fit_image_in_triangle(&img2.to_rgba8(), &mut result, false);
 
     // Create a thin slanted slash
     let slash_width = 5;
