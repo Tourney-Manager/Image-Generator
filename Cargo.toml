@@ -7,3 +7,4 @@ edition = "2021"
 image = "0.24"   # For image manipulation
 rusttype = "0.9"  # For text rendering
 imageproc = "0.23" # For image processing effects
+rand = "0.8.5"
