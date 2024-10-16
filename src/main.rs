@@ -1,6 +1,7 @@
-use image::{Rgba, RgbaImage, imageops};
+use image::{Rgba, RgbaImage};
 use imageproc::drawing::draw_text_mut;
 use rusttype::{Font, Scale};
+use rand::Rng;
 use std::env;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -19,45 +20,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let img2 = image::open(image2_path)?;
 
     // Set dimensions
-    let size = 800;
+    let size = 1000;
     let width = size;
     let height = size;
 
     // Create a new image for the result
     let mut result = RgbaImage::new(width, height);
 
-    // Function to fit image in triangle
+    // Function to fit and stretch image in triangle
     fn fit_image_in_triangle(img: &RgbaImage, result: &mut RgbaImage, is_top_left: bool) {
         let (width, height) = result.dimensions();
         
-        // Calculate the scale to fit the image in half of the square
-        let scale = f32::min(
-            width as f32 / (2.0 * img.width() as f32),
-            height as f32 / img.height() as f32
-        );
-        
-        let new_width = (img.width() as f32 * scale) as u32;
-        let new_height = (img.height() as f32 * scale) as u32;
-        
-        let resized = imageops::resize(img, new_width, new_height, imageops::FilterType::Lanczos3);
-        
-        for (x, y, &pixel) in resized.enumerate_pixels() {
-            let (dest_x, dest_y) = if is_top_left {
-                (x, y)
+        for (dest_x, dest_y, pixel) in result.enumerate_pixels_mut() {
+            let is_in_triangle = if is_top_left {
+                dest_y < height - dest_x
             } else {
-                (width - new_width + x, height - new_height + y)
+                dest_y > height - dest_x
             };
             
-            if dest_x < width && dest_y < height {
-                let is_in_triangle = if is_top_left {
-                    dest_y < height - dest_x
+            if is_in_triangle {
+                let (source_x, source_y) = if is_top_left {
+                    (dest_x * img.width() / width, dest_y * img.height() / height)
                 } else {
-                    dest_y > height - dest_x
+                    ((width - dest_x) * img.width() / width, (height - dest_y) * img.height() / height)
                 };
                 
-                if is_in_triangle {
-                    result.put_pixel(dest_x, dest_y, pixel);
-                }
+                *pixel = *img.get_pixel(source_x, source_y);
             }
         }
     }
@@ -66,15 +54,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     fit_image_in_triangle(&img1.to_rgba8(), &mut result, true);
     fit_image_in_triangle(&img2.to_rgba8(), &mut result, false);
 
-    // Create a thin diagonal line
-    let line_width = 3;
-    let line_color = Rgba([255u8, 255u8, 255u8, 255u8]); // White color
+    // Function to add fire effect
+    fn add_fire_effect(image: &mut RgbaImage, x: u32, y: u32, intensity: u8) {
+        for dx in -5..=5 {
+            for dy in -5..=5 {
+                let fx = x as i32 + dx;
+                let fy = y as i32 + dy;
+                if fx >= 0 && fx < image.width() as i32 && fy >= 0 && fy < image.height() as i32 {
+                    let distance = (dx * dx + dy * dy) as f32;
+                    let factor = (-distance / 10.0).exp();
+                    let fire_intensity = (intensity as f32 * factor) as u8;
+                    let pixel = image.get_pixel_mut(fx as u32, fy as u32);
+                    pixel[0] = pixel[0].saturating_add(fire_intensity);
+                    pixel[1] = pixel[1].saturating_add(fire_intensity / 2);
+                }
+            }
+        }
+    }
 
+    // Create a fiery diagonal line
+    let line_width = 5;
     for x in 0..width {
         let y = height - x;
         for dy in 0..line_width {
             if y + dy < height {
-                result.put_pixel(x, y + dy, line_color);
+                add_fire_effect(&mut result, x, y + dy, 200);
             }
         }
     }
@@ -83,36 +87,43 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let font = Vec::from(include_bytes!("../assets/Arial.ttf") as &[u8]);
     let font = Font::try_from_vec(font).unwrap();
 
-    // Draw "VS" text
+    // Draw "VS" text with fire effect
     let text = "VS";
-    let scale = Scale::uniform(80.0);
+    let scale = Scale::uniform(120.0);
     
-    // Calculate text position to fit in the center
-    let text_width = 80;
-    let text_height = 80;
+    let text_width = 120;
+    let text_height = 120;
     let text_x = (width - text_width) / 2;
     let text_y = (height - text_height) / 2;
 
-    // Draw text with a slight shadow for better visibility
+    // Draw text
     draw_text_mut(
         &mut result,
-        Rgba([0u8, 0u8, 0u8, 255u8]), // Shadow color
-        text_x as i32 + 2,
-        text_y as i32 + 2,
-        scale,
-        &font,
-        text,
-    );
-
-    draw_text_mut(
-        &mut result,
-        Rgba([255u8, 0u8, 0u8, 255u8]), // Red color
+        Rgba([255u8, 255u8, 255u8, 255u8]), // White color
         text_x as i32,
         text_y as i32,
         scale,
         &font,
         text,
     );
+
+    // Add fire effect to text
+    for x in text_x..text_x+text_width {
+        for y in text_y..text_y+text_height {
+            if result.get_pixel(x, y)[0] == 255 {
+                add_fire_effect(&mut result, x, y, 150);
+            }
+        }
+    }
+
+    // Add glitter effect
+    let mut rng = rand::thread_rng();
+    for _ in 0..500 {
+        let x = rng.gen_range(0..width);
+        let y = rng.gen_range(0..height);
+        let intensity = rng.gen_range(150..255) as u8;
+        result.put_pixel(x, y, Rgba([intensity, intensity, intensity, 255]));
+    }
 
     // Save the result
     result.save(output_path)?;
