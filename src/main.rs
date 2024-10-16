@@ -19,8 +19,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let img2 = image::open(image2_path)?;
 
     // Set dimensions
-    let width = 800;
-    let height = 600;
+    let size = 800;
+    let width = size;
+    let height = size;
 
     // Create a new image for the result
     let mut result = RgbaImage::new(width, height);
@@ -28,13 +29,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Function to fit image in triangle
     fn fit_image_in_triangle(img: &RgbaImage, result: &mut RgbaImage, is_top_left: bool) {
         let (width, height) = result.dimensions();
-        let diagonal_slope = height as f32 / width as f32;
         
-        let scale = if is_top_left {
-            f32::min(width as f32 / img.width() as f32, height as f32 / img.height() as f32)
-        } else {
-            f32::min(width as f32 / img.width() as f32, height as f32 / img.height() as f32)
-        };
+        // Calculate the scale to fit the image in half of the square
+        let scale = f32::min(
+            width as f32 / (2.0 * img.width() as f32),
+            height as f32 / img.height() as f32
+        );
         
         let new_width = (img.width() as f32 * scale) as u32;
         let new_height = (img.height() as f32 * scale) as u32;
@@ -50,9 +50,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             
             if dest_x < width && dest_y < height {
                 let is_in_triangle = if is_top_left {
-                    dest_y < height - (dest_x as f32 * diagonal_slope) as u32
+                    dest_y < height - dest_x
                 } else {
-                    dest_y > height - (dest_x as f32 * diagonal_slope) as u32
+                    dest_y > height - dest_x
                 };
                 
                 if is_in_triangle {
@@ -66,17 +66,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     fit_image_in_triangle(&img1.to_rgba8(), &mut result, true);
     fit_image_in_triangle(&img2.to_rgba8(), &mut result, false);
 
-    // Create a thin slanted slash
-    let slash_width = 5;
-    let slash_color = Rgba([255u8, 255u8, 255u8, 255u8]); // White color
+    // Create a thin diagonal line
+    let line_width = 3;
+    let line_color = Rgba([255u8, 255u8, 255u8, 255u8]); // White color
 
     for x in 0..width {
-        let y_center = height.saturating_sub(x * height / width);
-        let y_start = y_center.saturating_sub(slash_width / 2);
-        let y_end = std::cmp::min(y_center + slash_width / 2, height);
-        
-        for y in y_start..y_end {
-            result.put_pixel(x, y, slash_color);
+        let y = height - x;
+        for dy in 0..line_width {
+            if y + dy < height {
+                result.put_pixel(x, y + dy, line_color);
+            }
         }
     }
 
@@ -86,13 +85,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Draw "VS" text
     let text = "VS";
-    let scale = Scale::uniform(60.0);
+    let scale = Scale::uniform(80.0);
     
-    // Calculate text position to fit in the slash
-    let text_width = 60;
-    let text_height = 60;
+    // Calculate text position to fit in the center
+    let text_width = 80;
+    let text_height = 80;
     let text_x = (width - text_width) / 2;
-    let text_y = height / 2 - text_height / 2;
+    let text_y = (height - text_height) / 2;
 
     // Draw text with a slight shadow for better visibility
     draw_text_mut(
