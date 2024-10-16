@@ -1,6 +1,8 @@
 [package]
-name = "dummy"
+name = "vs_image"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+image = "0.24" # For image manipulation
+rusttype = "0.9" # For text rendering
