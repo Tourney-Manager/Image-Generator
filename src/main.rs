@@ -3,11 +3,10 @@ use imageproc::drawing::draw_text_mut;
 use rusttype::{Font, Scale};
 use rand::Rng;
 use std::env;
-use std::io::Cursor;
-use base64::{engine::general_purpose, Engine};
+use std::io::{self, Write};
 
 /// Main function that processes two input images and generates a combined image
-/// with special effects, returning the result as a Base64-encoded PNG.
+/// with special effects, returning the result as a PNG image written to stdout.
 ///
 /// # Arguments
 ///
@@ -21,8 +20,6 @@ use base64::{engine::general_purpose, Engine};
 /// ```bash
 /// cargo run path/to/image1.png path/to/image2.png
 /// ```
-///
-/// The output will be a Base64 string representing the processed image.
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().collect();
     if args.len() != 3 {
@@ -46,6 +43,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut result = RgbaImage::new(width, height);
 
     /// Fits and stretches an image into a triangle within the result image.
+    ///
+    /// # Arguments
+    ///
+    /// * `img` - The source image to fit into the triangle.
+    /// * `result` - The destination image where the triangle will be drawn.
+    /// * `is_top_left` - A boolean indicating whether to fit in the top-left or bottom-right triangle.
     fn fit_image_in_triangle(img: &RgbaImage, result: &mut RgbaImage, is_top_left: bool) {
         let (width, height) = result.dimensions();
         
@@ -73,6 +76,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     fit_image_in_triangle(&img2, &mut result, false);
 
     /// Adds a fire effect at a specific pixel location in the image.
+    ///
+    /// # Arguments
+    ///
+    /// * `image` - The mutable reference to the target image where the effect will be applied.
+    /// * `x` - The x-coordinate of the pixel where the effect starts.
+    /// * `y` - The y-coordinate of the pixel where the effect starts.
+    /// * `intensity` - The intensity of the fire effect.
     fn add_fire_effect(image: &mut RgbaImage, x: u32, y: u32, intensity: u8) {
         for dx in -5..=5 {
             for dy in -5..=5 {
@@ -101,14 +111,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // Load a font for drawing text.
+    // Load a font for drawing text onto the image.
     let font_data = include_bytes!("../assets/Arial.ttf");
     let font = Font::try_from_vec(font_data.to_vec()).unwrap();
 
-    // Draw "VS" text with fire effect.
+    // Draw "VS" text with fire effect on the resulting image.
     let text = "VS";
     let scale = Scale::uniform(120.0);
     
+    // Calculate position for centering text on the canvas.
     let text_width = 120;
     let text_height = 120;
     let text_x = (width - text_width) / 2;
@@ -124,41 +135,41 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         text,
     );
 
-    // Add fire effect to the drawn text.
-    for x in text_x..text_x + text_width {
-        for y in text_y..text_y + text_height {
-            if result.get_pixel(x, y)[0] == 255 {
-                add_fire_effect(&mut result, x, y, 150);
-            }
-        }
-    }
+   // Add fire effect to drawn text.
+   for x in text_x..text_x + text_width {
+       for y in text_y..text_y + text_height {
+           if result.get_pixel(x, y)[0] == 255 {
+               add_fire_effect(&mut result, x, y, 150);
+           }
+       }
+   }
 
-    // Add glitter effect randomly across the image.
-    let mut rng = rand::thread_rng();
-    for _ in 0..500 {
-        let x = rng.gen_range(0..width);
-        let y = rng.gen_range(0..height);
-        let intensity = rng.gen_range(150..255) as u8;
-        result.put_pixel(x, y, Rgba([intensity, intensity, intensity, 255]));
-    }
+   // Add glitter effect randomly across the resulting image.
+   let mut rng = rand::thread_rng();
+   for _ in 0..500 {
+       let x = rng.gen_range(0..width);
+       let y = rng.gen_range(0..height);
+       let intensity = rng.gen_range(150..255) as u8;
+       result.put_pixel(x, y, Rgba([intensity, intensity, intensity, 255]));
+   }
 
-    // Encode the resulting image to PNG format and then to Base64.
-    let mut buffer: Vec<u8> = Vec::new();
-    
-    {
-        let writer = Cursor::new(&mut buffer);
-        image::codecs::png::PngEncoder::new(writer).write_image(
-            &result,
-            width,
-            height,
-            ColorType::Rgba8,
-        )?;
-        
-        // Encode the buffer to Base64 using general-purpose engine.
-        let res_base64 = general_purpose::STANDARD.encode(&buffer);
-        
-        println!("data:image/png;base64,{res_base64}");
-        
-        Ok(())
-    }
+   // Encode the resulting image to PNG format and write it directly to stdout
+   // This will allow the TypeScript code to read it directly.
+   let mut buffer: Vec<u8> = Vec::new();
+   {
+       use std::io::Cursor;
+
+       // Use PngEncoder's write_image method instead of encode
+       image::codecs::png::PngEncoder::new(Cursor::new(&mut buffer)).write_image(
+           &result,
+           width,
+           height,
+           ColorType::Rgba8,
+       )?;
+   }
+
+   // Write the PNG data directly to stdout
+   io::stdout().write_all(&buffer)?;
+
+   Ok(())
 }
