@@ -4,8 +4,8 @@ use imageproc::drawing::draw_text_mut;
 use rusttype::{Font, Scale};
 use rand::Rng;
 use std::env;
-use std::fs::File;
-use std::io::{BufReader, Read};
+use std::fs::{File, OpenOptions};
+use std::io::{BufReader, Read, Write};
 
 /// Extracts a frame from a GIF, taking the first frame.
 /// 
@@ -222,6 +222,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Convert to base64 and print to stdout
     let base64_string = base64_engine.encode(&buffer);
     println!("{}", base64_string);
+
+    // Open or create the file "base64.txt" and overwrite its contents
+    let mut file = OpenOptions::new()
+        .write(true)      // Enable write access
+        .create(true)     // Create the file if it does not exist
+        .truncate(true)   // Truncate the file if it already exists
+        .open("base64.txt")?; // Open the specified file
+
+    // Write the Base64 string to the file
+    file.write_all(base64_string.as_bytes())?;
 
     Ok(())
 }
