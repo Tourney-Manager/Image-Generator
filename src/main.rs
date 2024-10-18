@@ -221,7 +221,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Convert to base64 and print to stdout
     let base64_string = base64_engine.encode(&buffer);
-    println!("{}", base64_string);
 
     // Open or create the file "base64.txt" and overwrite its contents
     let mut file = OpenOptions::new()
